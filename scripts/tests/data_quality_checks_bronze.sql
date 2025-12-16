@@ -18,9 +18,6 @@ Usage Notes:
 ===============================================================================
 */
 
--- ====================================================================
--- Checking 'silver.crm_cust_info'
--- ====================================================================
 -- Check for NULLs or Duplicates in Primary Key
 -- Expectation: No Results
 SELECT 
@@ -30,6 +27,17 @@ FROM silver.crm_cust_info
 GROUP BY cst_id
 HAVING COUNT(*) > 1 OR cst_id IS NULL;
 
+-- SOLUTION ==> Pick only the row with the most recent date
+WITH ranked AS (
+	SELECT 
+		*,
+		ROW_NUMBER() OVER (PARTITION BY cst_id ORDER BY cst_create_date DESC) flag_last
+	FROM bronze.crm_cust_info
+)
+SELECT * FROM ranked WHERE flag_last = 1
+
+
+    
 -- Check for Unwanted Spaces
 -- Expectation: No Results
 SELECT 
@@ -37,29 +45,14 @@ SELECT
 FROM silver.crm_cust_info
 WHERE cst_key != TRIM(cst_key);
 
+
+
 -- Data Standardization & Consistency
 SELECT DISTINCT 
     cst_marital_status 
 FROM silver.crm_cust_info;
 
--- ====================================================================
--- Checking 'silver.crm_prd_info'
--- ====================================================================
--- Check for NULLs or Duplicates in Primary Key
--- Expectation: No Results
-SELECT 
-    prd_id,
-    COUNT(*) 
-FROM silver.crm_prd_info
-GROUP BY prd_id
-HAVING COUNT(*) > 1 OR prd_id IS NULL;
 
--- Check for Unwanted Spaces
--- Expectation: No Results
-SELECT 
-    prd_nm 
-FROM silver.crm_prd_info
-WHERE prd_nm != TRIM(prd_nm);
 
 -- Check for NULLs or Negative Values in Cost
 -- Expectation: No Results
@@ -68,10 +61,7 @@ SELECT
 FROM silver.crm_prd_info
 WHERE prd_cost < 0 OR prd_cost IS NULL;
 
--- Data Standardization & Consistency
-SELECT DISTINCT 
-    prd_line 
-FROM silver.crm_prd_info;
+
 
 -- Check for Invalid Date Orders (Start Date > End Date)
 -- Expectation: No Results
@@ -80,26 +70,28 @@ SELECT
 FROM silver.crm_prd_info
 WHERE prd_end_dt < prd_start_dt;
 
--- ====================================================================
--- Checking 'silver.crm_sales_details'
--- ====================================================================
+-- SOLUTION ==> Pick as end date the NEXT (LEAD()) start date, and subtract 1 DAY.
+SELECT 
+    prd_id,
+    prd_key,
+    prd_start_dt,
+    prd_end_dt,
+    LEAD(prd_start_dt) OVER (PARTITION BY prd_key ORDER BY prd_start_dt) -1 AS prd_end_dt_test -- Add this row to the final INSERT INTO statement
+FROM bronze.crm_prd_info
+
+
+
 -- Check for Invalid Dates
 -- Expectation: No Invalid Dates
 SELECT 
     NULLIF(sls_due_dt, 0) AS sls_due_dt 
 FROM bronze.crm_sales_details
 WHERE sls_due_dt <= 0 
-    OR LEN(sls_due_dt) != 8 
+    OR LEN(sls_due_dt) != 8  -- The integer indicating the date always has 8 digits: 20251216
     OR sls_due_dt > 20500101 
     OR sls_due_dt < 19000101;
 
--- Check for Invalid Date Orders (Order Date > Shipping/Due Dates)
--- Expectation: No Results
-SELECT 
-    * 
-FROM silver.crm_sales_details
-WHERE sls_order_dt > sls_ship_dt 
-   OR sls_order_dt > sls_due_dt;
+
 
 -- Check Data Consistency: Sales = Quantity * Price
 -- Expectation: No Results
@@ -117,44 +109,29 @@ WHERE sls_sales != sls_quantity * sls_price
    OR sls_price <= 0
 ORDER BY sls_sales, sls_quantity, sls_price;
 
--- ====================================================================
--- Checking 'silver.erp_cust_az12'
--- ====================================================================
--- Identify Out-of-Range Dates
--- Expectation: Birthdates between 1924-01-01 and Today
-SELECT DISTINCT 
-    bdate 
-FROM silver.erp_cust_az12
-WHERE bdate < '1924-01-01' 
-   OR bdate > GETDATE();
-
--- Data Standardization & Consistency
-SELECT DISTINCT 
-    gen 
-FROM silver.erp_cust_az12;
-
--- ====================================================================
--- Checking 'silver.erp_loc_a101'
--- ====================================================================
--- Data Standardization & Consistency
-SELECT DISTINCT 
-    cntry 
-FROM silver.erp_loc_a101
-ORDER BY cntry;
-
--- ====================================================================
--- Checking 'silver.erp_px_cat_g1v2'
--- ====================================================================
--- Check for Unwanted Spaces
--- Expectation: No Results
-SELECT 
-    * 
-FROM silver.erp_px_cat_g1v2
-WHERE cat != TRIM(cat) 
-   OR subcat != TRIM(subcat) 
-   OR maintenance != TRIM(maintenance);
-
--- Data Standardization & Consistency
-SELECT DISTINCT 
-    maintenance 
-FROM silver.erp_px_cat_g1v2;
+-- CORRECTION RULES:
+    -- If sls_sales negative, 0, null ==> derive it from quantity & price.
+    -- If price is 0 or null ==> Derive it from sales & quantity.
+    -- If quantity is negative, convert it to positive.
+SELECT DISTINCT
+    sls_sales,
+    CASE 
+        WHEN sls_sales <= 0 OR sls_sales IS NULL OR sls_sales != ABS(sls_quantity) * ABS(sls_price)
+            THEN ABS(sls_quantity) * ABS(sls_price)
+        ELSE sls_sales
+    END sls_sales_NEW,
+    ABS(sls_quantity) sls_quantity,
+    CASE 
+        WHEN sls_price <= 0 OR sls_price IS NULL THEN sls_sales / sls_quantity
+        ELSE sls_price
+    END sls_price_NEW,
+    sls_price
+FROM bronze.crm_sales_details
+WHERE 
+    sls_sales != sls_quantity * sls_price OR
+    sls_sales IS NULL OR
+    sls_quantity IS NULL OR
+    sls_sales <= 0 OR
+    sls_quantity <= 0 OR
+    sls_price <= 0
+ORDER BY sls_sales, sls_quantity, sls_price
