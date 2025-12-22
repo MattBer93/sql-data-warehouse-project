@@ -2,7 +2,7 @@
 -- CREATE TABLES IN BRONZE
 --========================
 
--- Create table for crm_cust_info
+-- crm_cust_info
 IF OBJECT_ID('bronze.crm_cust_info', 'U') IS NOT NULL
     DROP TABLE bronze.crm_cust_info;
 GO
@@ -18,7 +18,7 @@ CREATE TABLE bronze.crm_cust_info (
 );
 GO
 
--- Create table for crm_prd_info
+-- crm_prd_info
 IF OBJECT_ID('bronze.crm_prd_info', 'U') IS NOT NULL
     DROP TABLE bronze.crm_prd_info;
 GO
@@ -34,7 +34,7 @@ CREATE TABLE bronze.crm_prd_info (
 );
 GO
 
--- Create table for crm_sales_details
+-- crm_sales_details
 IF OBJECT_ID('bronze.crm_sales_details', 'U') IS NOT NULL -- 'U' => User defined table
     DROP TABLE bronze.crm_sales_details;
 GO
