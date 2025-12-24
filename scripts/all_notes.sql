@@ -903,13 +903,13 @@ WHERE row_num = 1
 	-- Cumulative Distribution; calculates data distribution in a window
 	-- cume_dist = position/nr. rows
 	-- if TIE, SQL takes the LAST row position of the same value
-	-- “How many rows have a value less than or equal to this one?”
+	-- Â“How many rows have a value less than or equal to this one?Â”
 
 -- PERCENT_RANK()
 	-- Calculates relative position of each row
 	-- Percent_rank = (position -1) / (nr. rows - 1)
 	-- if TIE, SQL takes the FIRST row position of the same value
-	-- “How this row ranks relative to the others, scaled between 0 and 1.”
+	-- Â“How this row ranks relative to the others, scaled between 0 and 1.Â”
 
 SELECT
 	CUME_DIST() OVER (ORDER BY Sales) c_distribution,
